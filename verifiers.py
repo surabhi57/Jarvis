@@ -19,12 +19,19 @@ class VerificationResult:
 
 
 def verify_find_file(args: Dict[str, Any], result: Any) -> VerificationResult:
-    """Verify that find_file executed cleanly and returned a valid list of matches."""
+    """Verify that find_file returned sandbox files that actually exist."""
     if not isinstance(result, list):
         return VerificationResult(
             success=False,
             message=f"find_file returned invalid type: {type(result).__name__}, expected list."
         )
+    missing = [
+        name for name in result
+        if not isinstance(name, str) or not (SANDBOX_DIR / name).resolve().is_relative_to(SANDBOX_DIR.resolve())
+        or not (SANDBOX_DIR / name).is_file()
+    ]
+    if missing:
+        return VerificationResult(success=False, message=f"find_file returned missing sandbox files: {missing}.")
     return VerificationResult(
         success=True,
         message=f"find_file verified successfully, found {len(result)} candidate(s).",

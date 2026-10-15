@@ -35,6 +35,7 @@ from agent import (
     TASKS_DIR,
     plan_goal,
     _enrich_steps_with_risk,
+    _applied_preferences,
     record_event,
 )
 from tools import tool_registry, set_fail_once, get_fail_once, SANDBOX_DIR
@@ -57,6 +58,7 @@ def _run_task_in_background(task_id: str, resume_input=None):
                     _enrich_steps_with_risk(task["steps"])
                     task["planner"] = planner_info.get("planner", "heuristic")
                     task["planner_error"] = planner_info.get("planner_error")
+                    task["preferences_used"] = _applied_preferences(task["steps"], load_preferences())
                     task["message"] = f"Task created with {len(task['steps'])} planned step(s)."
                     record_event(task, "plan", f"Plan created with {len(task['steps'])} step(s) using the {task['planner']} planner.")
                     save_task(task)

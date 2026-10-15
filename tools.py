@@ -133,11 +133,12 @@ tool_registry = ToolRegistry()
 def find_file(query: str) -> List[str]:
     """Search ./sandbox for files matching query."""
     matches = []
-    q = query.strip().casefold()
+    q = " ".join(query.casefold().replace("_", " ").replace("-", " ").split())
     for path in SANDBOX_DIR.rglob("*"):
         if path.is_file():
             rel = path.relative_to(SANDBOX_DIR).as_posix()
-            if q in rel.casefold():
+            normalized = " ".join(rel.casefold().replace("_", " ").replace("-", " ").split())
+            if q in normalized:
                 matches.append(rel)
     return sorted(matches)
 

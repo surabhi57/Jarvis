@@ -182,7 +182,8 @@
         changed = true;
       }
     }
-    const plannerText = task.planner_error ? `Planner: ${task.planner || 'heuristic'} · Notice: ${humanize(task.planner_error)}` : (task.planner ? `Planner: ${task.planner}` : '');
+    const remembered = (task.preferences_used || []).length ? ` · Remembered from last time: ${task.preferences_used.join(', ')}` : '';
+    const plannerText = task.planner_error ? `Planner: ${task.planner || 'heuristic'} · Notice: ${humanize(task.planner_error)}${remembered}` : (task.planner ? `Planner: ${task.planner}${remembered}` : '');
     if (plannerLabel.textContent !== plannerText) plannerLabel.textContent = plannerText;
     if (changed) feed.scrollTop = feed.scrollHeight;
   }
@@ -343,6 +344,17 @@
     } finally { busy = false; }
   }
   document.querySelector('#get-started').addEventListener('click', () => showPage(page2));
+  document.querySelector('#reset-demo').addEventListener('click', async () => {
+    try {
+      await request('/sandbox/reset', { method: 'POST' });
+      setConnection(true);
+      setNotice('Demo sandbox reset. The staged failure is ready.');
+    } catch (error) {
+      const unavailable = error instanceof TypeError;
+      setConnection(!unavailable);
+      setNotice(unavailable ? '' : humanize(error.message));
+    }
+  });
   messageForm.addEventListener('keydown', event => {
     if (event.target !== messageArea || event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
     event.preventDefault();

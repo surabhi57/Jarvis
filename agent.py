@@ -349,6 +349,32 @@ def _heuristic_planner(goal: str, preferences: Dict[str, Any]) -> List[Dict[str,
     return steps
 
 
+def _validate_planner_steps(steps: Any) -> List[Dict[str, Any]]:
+    if not isinstance(steps, list) or not steps:
+        raise ValueError("Planner response must be a non-empty array of steps.")
+    for index, step in enumerate(steps, start=1):
+        if not isinstance(step, dict):
+            raise ValueError(f"Planner step {index} must be an object.")
+        tool_name = step.get("tool")
+        definition = tool_registry.get(tool_name) if isinstance(tool_name, str) else None
+        if definition is None:
+            raise ValueError(f"Planner step {index} references an unknown tool: {tool_name!r}.")
+        args = step.get("args")
+        if not isinstance(args, dict):
+            raise ValueError(f"Planner step {index} args must be an object.")
+        missing = set(definition.parameters) - set(args)
+        if missing:
+            raise ValueError(f"Planner step {index} is missing arguments for {tool_name}: {', '.join(sorted(missing))}.")
+        if not isinstance(step.get("description"), str) or not step["description"].strip():
+            raise ValueError(f"Planner step {index} needs a description.")
+    return steps
+
+
+def _applied_preferences(steps: List[Dict[str, Any]], preferences: Dict[str, Any]) -> List[str]:
+    used_values = [value for step in steps for value in (step.get("args") or {}).values()]
+    return [key for key, value in preferences.items() if value in used_values]
+
+
 def plan_goal(goal: str, planner_info: Optional[Dict[str, str]] = None) -> List[Dict[str, Any]]:
     """
     Plan a list of steps for the given goal using LLM (if API key available)
@@ -368,7 +394,7 @@ def plan_goal(goal: str, planner_info: Optional[Dict[str, str]] = None) -> List[
         try:
             from openai import OpenAI
             client = OpenAI(api_key=openai_key)
-            prompt = PLANNER_SYSTEM_PROMPT.format(preferences=json.dumps(preferences, indent=2), tools=tools_prompt)
+            prompt = PLANNER_SYSTEM_PROMPT.replace("{preferences}", json.dumps(preferences, indent=2)).replace("{tools}", tools_prompt)
             completion = client.chat.completions.create(
                 model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
                 messages=[
@@ -380,12 +406,11 @@ def plan_goal(goal: str, planner_info: Optional[Dict[str, str]] = None) -> List[
             raw_text = completion.choices[0].message.content.strip()
             # Clean possible markdown block
             raw_text = re.sub(r"^```(?:json)?", "", raw_text).strip("`").strip()
-            parsed = json.loads(raw_text)
-            if isinstance(parsed, list):
-                _enrich_steps_with_risk(parsed)
-                if planner_info is not None:
-                    planner_info["planner"] = "openai"
-                return parsed
+            parsed = _validate_planner_steps(json.loads(raw_text))
+            _enrich_steps_with_risk(parsed)
+            if planner_info is not None:
+                planner_info["planner"] = "openai"
+            return parsed
         except Exception as exc:
             print(f"OpenAI planner failed: {exc}")
             if planner_info is not None:
@@ -397,7 +422,7 @@ def plan_goal(goal: str, planner_info: Optional[Dict[str, str]] = None) -> List[
             from google import genai
             client = genai.Client(api_key=gemini_key)
             prompt = (
-                PLANNER_SYSTEM_PROMPT.format(preferences=json.dumps(preferences, indent=2), tools=tools_prompt)
+                PLANNER_SYSTEM_PROMPT.replace("{preferences}", json.dumps(preferences, indent=2)).replace("{tools}", tools_prompt)
                 + f"\n\nUser Goal: {goal}\nReturn JSON array only:"
             )
             response = client.models.generate_content(
@@ -406,12 +431,11 @@ def plan_goal(goal: str, planner_info: Optional[Dict[str, str]] = None) -> List[
             )
             raw_text = response.text.strip()
             raw_text = re.sub(r"^```(?:json)?", "", raw_text).strip("`").strip()
-            parsed = json.loads(raw_text)
-            if isinstance(parsed, list):
-                _enrich_steps_with_risk(parsed)
-                if planner_info is not None:
-                    planner_info["planner"] = "gemini"
-                return parsed
+            parsed = _validate_planner_steps(json.loads(raw_text))
+            _enrich_steps_with_risk(parsed)
+            if planner_info is not None:
+                planner_info["planner"] = "gemini"
+            return parsed
         except Exception as exc:
             print(f"Gemini planner failed: {exc}")
             if planner_info is not None:
@@ -470,6 +494,7 @@ def create_task(goal: str, custom_steps: Optional[List[Dict[str, Any]]] = None, 
         "goal": goal,
         "planner": planner,
         "planner_error": planner_error,
+        "preferences_used": _applied_preferences(steps, load_preferences()),
         "status": "running" if defer_planning else "pending",
         "current_step": 0,
         "steps": steps,
@@ -690,20 +715,6 @@ def run_task(task: Dict[str, Any], resume_input: Optional[Dict[str, Any]] = None
                             task["message"] = "A new search query is required to resume."
                             save_task(task)
                             return task
-                        stop_words = {"find", "and", "list", "its", "files", "the", "tell", "me", "content", "show", "open", "read", "what", "all", "are", "there", "in", "it", "give", "also", "first", "name"}
-                        words = set(re.findall(r"[a-z0-9]+", query.casefold())) - stop_words
-                        candidates = [path.relative_to(SANDBOX_DIR).as_posix() for path in SANDBOX_DIR.rglob("*")]
-                        recommended = []
-                        for name in candidates:
-                            name_words = set(re.findall(r"[a-z0-9]+", name.casefold()))
-                            score = max((SequenceMatcher(None, word, name.casefold()).ratio() for word in words), default=0)
-                            if words.intersection(name_words) or score > 0.6:
-                                recommended.append(name)
-                        if recommended:
-                            task["error_details"]["options"] = sorted(recommended, key=lambda name: name.casefold())[:3]
-                            task["message"] = f"I found related names for '{query}'. Choose one, or enter another search query."
-                            save_task(task)
-                            return task
                         current_step_obj["args"]["query"] = query
                         current_step_obj["error"] = None
                         current_step_obj["attempts"] = 0
@@ -837,6 +848,12 @@ def run_task(task: Dict[str, Any], resume_input: Optional[Dict[str, Any]] = None
 
             # B. Check for multiple matches on find_file (Requirement 5)
             if current_tool == "find_file" and isinstance(result, list) and len(result) > 1:
+                search_verifier = get_verifier(current_tool)
+                search_verification = search_verifier(current_args, result) if search_verifier else None
+                if search_verification:
+                    step["verifier_message"] = search_verification.message
+                    step["verifier_passed"] = search_verification.success
+                    record_event(task, "verify", search_verification.message, step.get("step_id"))
                 step["status"] = "needs_human"
                 task["status"] = "needs_human"
                 task["error_details"] = {
@@ -847,7 +864,8 @@ def run_task(task: Dict[str, Any], resume_input: Optional[Dict[str, Any]] = None
                     "options": result,
                 }
                 task["message"] = "Multiple matching files found. Escalating to human for selection."
-                record_event(task, "verify", f"Search found {len(result)} matching files.", step.get("step_id"))
+                if not search_verification:
+                    record_event(task, "verify", f"Search found {len(result)} matching files.", step.get("step_id"))
                 record_event(task, "escalate", task["message"], step.get("step_id"))
                 save_task(task)
                 return task
@@ -863,7 +881,14 @@ def run_task(task: Dict[str, Any], resume_input: Optional[Dict[str, Any]] = None
                     if query_words.intersection(name_words) or similar:
                         suggestions.append(name)
                 suggestions = sorted(suggestions, key=lambda name: SequenceMatcher(None, query.casefold(), name.casefold()).ratio(), reverse=True)[:3]
-                record_event(task, "verify", f"Search found no files matching '{query}'.", step.get("step_id"))
+                search_verifier = get_verifier(current_tool)
+                search_verification = search_verifier(current_args, result) if search_verifier else None
+                if search_verification:
+                    step["verifier_message"] = search_verification.message
+                    step["verifier_passed"] = search_verification.success
+                    record_event(task, "verify", search_verification.message, step.get("step_id"))
+                else:
+                    record_event(task, "verify", f"Search found no files matching '{query}'.", step.get("step_id"))
                 record_failure(task, f"No files matched search query '{query}'.")
                 step["status"] = "needs_human"
                 step["error"] = f"No files matched '{query}'."
