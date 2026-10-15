@@ -133,13 +133,44 @@ tool_registry = ToolRegistry()
 def find_file(query: str) -> List[str]:
     """Search ./sandbox for files matching query."""
     matches = []
-    q = query.strip().lower()
+    q = query.strip().casefold()
     for path in SANDBOX_DIR.rglob("*"):
         if path.is_file():
             rel = path.relative_to(SANDBOX_DIR).as_posix()
-            if q in rel.lower():
+            if q in rel.casefold():
                 matches.append(rel)
     return sorted(matches)
+
+
+@tool_registry.register(
+    name="read_file",
+    risk_level="low",
+    verifier_name="read_file",
+    description="Read and return the text content of a file in the sandbox.",
+    parameters={"name": {"type": "string", "description": "File name or relative path inside the sandbox"}}
+)
+def read_file(name: str) -> str:
+    """Read a text file from the sandbox, resolving its path case-insensitively."""
+    requested = name.replace("\\", "/").strip("/").casefold()
+    for path in SANDBOX_DIR.rglob("*"):
+        if path.is_file() and path.relative_to(SANDBOX_DIR).as_posix().casefold() == requested:
+            return path.read_text(encoding="utf-8", errors="replace")
+    raise FileNotFoundError(f"File '{name}' does not exist in sandbox.")
+
+
+@tool_registry.register(
+    name="list_files",
+    risk_level="low",
+    verifier_name="list_files",
+    description="List files in a folder inside the sandbox.",
+    parameters={"folder": {"type": "string", "description": "Folder path inside the sandbox"}}
+)
+def list_files(folder: str) -> List[str]:
+    """List files directly inside a sandbox folder."""
+    target = (SANDBOX_DIR / folder).resolve()
+    if not target.is_relative_to(SANDBOX_DIR.resolve()) or not target.is_dir():
+        return []
+    return sorted(path.name for path in target.iterdir() if path.is_file())
 
 
 @tool_registry.register(

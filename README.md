@@ -132,11 +132,21 @@ set GEMINI_API_KEY=AIzaSy...
 Run with `uvicorn`:
 
 ```bash
-uvicorn main:app --reload
+python -m uvicorn main:app --reload --host 0.0.0.0
 ```
 
 The server starts at `http://127.0.0.1:8000`.  
 Interactive Swagger documentation is available at `http://127.0.0.1:8000/docs`.
+
+### 4. Serve the UI
+
+From the project directory, run:
+
+```bash
+python -m http.server 5500
+```
+
+Then open `http://localhost:5500` in a browser.
 
 ---
 
@@ -172,6 +182,8 @@ tool_registry.add(
 | Tool | Risk Level | Description | Code-Based Verifier |
 |---|---|---|---|
 | `find_file(query)` | `low` | Searches `./sandbox` for matching files | Checks valid match list; escalates if > 1 match |
+| `read_file(name)` | `low` | Reads text content from a sandbox file | Checks file exists and is non-empty |
+| `list_files(folder)` | `low` | Lists files in a sandbox folder | Checks that the folder exists |
 | `download_file(name)` | `low` | Downloads mock file (features `FAIL_ONCE`) | Checks file exists on disk and `size > 0` |
 | `create_reminder(text, time)` | `low` | Appends reminder | Reads `./sandbox/reminders.json` to verify entry |
 | `move_file(name, folder)` | `medium` | Moves file to target subfolder | Checks destination exists and source is moved |
@@ -217,7 +229,7 @@ If the server restarts, any task can be retrieved or resumed using its `task_id`
 ## 📡 API Endpoints
 
 ### 1. `POST /tasks`
-Create a new task and begin execution.
+Create a new task; planning and execution continue in the background. Poll `GET /tasks/{task_id}` for live progress.
 
 ```bash
 curl -X POST http://127.0.0.1:8000/tasks \
@@ -289,5 +301,5 @@ python -m pytest -v test_jarvis.py
 ```
 # JARVIS Web Console
 
-The single-page frontend is plain HTML, CSS, and JavaScript. Start the backend with `uvicorn main:app --reload`, then open `index.html` in a browser. It connects to `http://localhost:8000` by default. To view a task on another device, open the same page with its `?task=<id>` URL; the phone must be able to reach the machine running the backend, so update `API` at the top of `app.js` from `localhost` to that machine's LAN address when needed.
+The single-page frontend is plain HTML, CSS, and JavaScript. Run the backend with `python -m uvicorn main:app --reload --host 0.0.0.0` and serve the UI with `python -m http.server 5500`. Open `http://localhost:5500` in a browser. It connects to port 8000 on the page's host. To view a task on another device, open the same page with its `?task=<id>` URL; the phone must be able to reach the machine running the backend over the network.
 

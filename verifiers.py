@@ -32,6 +32,49 @@ def verify_find_file(args: Dict[str, Any], result: Any) -> VerificationResult:
     )
 
 
+def verify_read_file(args: Dict[str, Any], result: Any) -> VerificationResult:
+    """Verify the requested sandbox file exists and readable text was returned."""
+    requested = str(args.get("name") or "").replace("\\", "/").strip("/").casefold()
+    exists = any(
+        path.is_file() and path.relative_to(SANDBOX_DIR).as_posix().casefold() == requested
+        for path in SANDBOX_DIR.rglob("*")
+    )
+    if not exists:
+        return VerificationResult(success=False, message=f"Verification failed: File '{args.get('name')}' does not exist in sandbox.")
+    if not isinstance(result, str):
+        return VerificationResult(success=False, message="read_file returned invalid content; expected text.")
+    if not result.strip():
+        return VerificationResult(success=False, message=f"Verification failed: File '{args.get('name')}' is empty.")
+    return VerificationResult(
+        success=True,
+        message=f"File '{args.get('name')}' exists and its contents were read.",
+        details={"character_count": len(result)},
+    )
+
+
+def verify_list_files(args: Dict[str, Any], result: Any) -> VerificationResult:
+    """Verify the requested sandbox folder exists and list_files returned a list."""
+    folder = args.get("folder")
+    target = (SANDBOX_DIR / str(folder or "")).resolve()
+    if not target.is_relative_to(SANDBOX_DIR.resolve()) or not target.is_dir():
+        return VerificationResult(
+            success=False,
+            message=f"Verification failed: Folder '{folder}' does not exist in sandbox."
+        )
+    if not isinstance(result, list):
+        return VerificationResult(
+            success=False,
+            message=f"list_files returned invalid type: {type(result).__name__}, expected list."
+        )
+    if not result:
+        return VerificationResult(success=False, message=f"Verification failed: Folder '{folder}' is empty.")
+    return VerificationResult(
+        success=True,
+        message=f"Folder '{folder}' verified, found {len(result)} file(s).",
+        details={"folder": str(target), "files": result}
+    )
+
+
 def verify_download_file(args: Dict[str, Any], result: Any) -> VerificationResult:
     """Verify downloaded file actually exists on disk in ./sandbox and has non-zero size."""
     filename = args.get("name")
@@ -170,6 +213,8 @@ def verify_send_email(args: Dict[str, Any], result: Any) -> VerificationResult:
 
 VERIFIERS: Dict[str, Any] = {
     "find_file": verify_find_file,
+    "read_file": verify_read_file,
+    "list_files": verify_list_files,
     "download_file": verify_download_file,
     "move_file": verify_move_file,
     "create_reminder": verify_create_reminder,

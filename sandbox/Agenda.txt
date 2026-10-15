@@ -1,0 +1,4 @@
+JARVIS demo agenda
+- Review the weekly project status
+- Read the latest meeting notes
+- Prepare the next team update

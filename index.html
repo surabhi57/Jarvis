@@ -3,47 +3,93 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#080d14" />
-    <title>JARVIS — Agent Console</title>
+    <meta name="theme-color" content="#B4B0BA" />
+    <title>JARVIS</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <main class="shell">
+    <main class="app-shell">
       <header class="topbar">
-        <a class="brand" href="./" aria-label="JARVIS home">
-          <span class="brand-mark" aria-hidden="true">J</span>
-          <span>JARVIS<span class="brand-sub">AGENT CONSOLE</span></span>
-        </a>
-        <div class="connection"><span class="pulse" aria-hidden="true"></span><span id="connection-label">Connecting</span></div>
+        <a class="brand" href="./" aria-label="JARVIS"><span class="brand-mark" aria-hidden="true">J</span><span>JARVIS</span></a>
+        <div id="connection" class="connection hidden" role="status"><span class="pulse" aria-hidden="true"></span><span id="connection-label">Backend unavailable</span></div>
       </header>
 
-      <section class="hero" aria-labelledby="page-title">
-        <p class="eyebrow">PLAN <span>→</span> EXECUTE <span>→</span> VERIFY <span>→</span> RECOVER</p>
-        <h1 id="page-title">What should I take care of?</h1>
-        <p class="intro">Give JARVIS a goal. You’ll see every step and can weigh in when it needs you.</p>
+      <section id="page1" class="page welcome-page">
+        <div class="welcome-content">
+          <p class="eyebrow">Your intelligent assistant</p>
+          <h1>Welcome to JARVIS</h1>
+          <p class="welcome-quote">“Small steps turn big intentions into progress.”</p>
+          <button id="get-started" class="primary" type="button">Get started <span aria-hidden="true">→</span></button>
+        </div>
       </section>
 
-      <form id="goal-form" class="composer">
-        <label class="sr-only" for="goal-input">Your goal</label>
-        <textarea id="goal-input" rows="2" placeholder="For example: Find the Q1 report and move it to archive" required></textarea>
-        <div class="composer-footer">
-          <span class="hint">JARVIS will ask before sensitive actions.</span>
-          <button id="start-button" class="primary" type="submit"><span>Start task</span><span aria-hidden="true">↗</span></button>
+      <section id="page2" class="page workspace-page hidden">
+        <div class="page-heading">
+          <p class="eyebrow">Workspace</p>
+          <h1>Let’s get to work.</h1>
         </div>
-      </form>
+        <div class="workspace-grid">
+          <section class="panel you-panel" aria-labelledby="you-heading">
+            <div class="panel-heading">
+              <span class="panel-icon you-icon" aria-hidden="true">You</span>
+              <div><p class="eyebrow">Working with you</p><h2 id="you-heading">You</h2></div>
+            </div>
+            <p id="you-prompt" class="panel-prompt">Tell me what you would like to accomplish.</p>
+            <div id="response-actions" class="response-actions" aria-live="polite"></div>
+            <form id="message-form" class="message-form">
+              <label class="sr-only" for="message-input">Goal or reply</label>
+              <textarea id="message-input" rows="5" placeholder="Enter a goal or reply…"></textarea>
+              <button class="primary send-button" type="submit">Send <span aria-hidden="true">→</span></button>
+            </form>
+            <p class="input-hint">Press Enter to send · Shift+Enter for a new line</p>
+          </section>
 
-      <section id="task-panel" class="task-panel" hidden aria-live="polite">
-        <div class="task-heading">
-          <div><p class="eyebrow">CURRENT TASK</p><h2 id="task-goal"></h2></div>
-          <span id="task-status" class="badge"></span>
+          <section class="panel jarvis-panel" aria-labelledby="jarvis-heading">
+            <div class="panel-heading">
+              <span class="panel-icon jarvis-icon" aria-hidden="true">J</span>
+              <div><p class="eyebrow">Live task feed</p><h2 id="jarvis-heading">JARVIS</h2></div>
+              <small id="planner-label" class="planner-label"></small>
+            </div>
+            <div id="task-progress" class="task-progress hidden" aria-live="polite"><span id="progress-label"></span><progress id="progress-bar" max="1" value="0"></progress></div>
+            <div id="working-indicator" class="working-indicator hidden">JARVIS is working<span class="working-dots">...</span></div>
+            <div id="chat-feed" class="chat-feed" aria-live="polite" aria-relevant="additions"></div>
+          </section>
         </div>
-        <p id="remembered" class="remembered" hidden></p>
-        <p id="task-message" class="task-message" hidden></p>
-        <div id="steps" class="steps"></div>
-        <div id="human-panel" class="human-panel" hidden></div>
       </section>
-      <div id="notice" class="notice" role="status" hidden></div>
-      <footer>JARVIS · Failure-aware by design</footer>
+
+      <section id="page3" class="page result-page hidden">
+        <div class="page-heading">
+          <p class="eyebrow">Task result</p>
+          <h1 id="result-title">Task complete</h1>
+        </div>
+        <section class="result-card">
+          <div class="result-section answer-section">
+            <h3>Answer</h3>
+            <pre id="result-answer" class="answer-output"></pre>
+          </div>
+          <p id="result-missing" class="result-missing hidden"></p>
+          <div class="result-heading">
+            <div><p class="eyebrow">Your goal</p><h2 id="result-goal"></h2></div>
+            <span id="result-status" class="badge"></span>
+          </div>
+          <p id="result-summary" class="result-summary"></p>
+          <div class="result-section">
+            <h3>Steps and verification</h3>
+            <div id="result-steps" class="result-list"></div>
+          </div>
+          <div class="result-section">
+            <h3>What went wrong and how it was handled</h3>
+            <div id="result-failures" class="result-list"></div>
+          </div>
+        </section>
+        <div class="result-actions">
+          <button id="new-task" class="primary" type="button">Start a new task <span aria-hidden="true">→</span></button>
+          <button id="back-welcome" class="secondary" type="button">Back to welcome</button>
+        </div>
+      </section>
+
+      <div id="notice" class="notice hidden" role="status"></div>
+      <footer>JARVIS <span>·</span> Clarity at every step</footer>
     </main>
     <script src="app.js" defer></script>
   </body>

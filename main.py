@@ -13,7 +13,13 @@ Endpoints:
 
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-import shutil
+import os
+import threading
+
+from dotenv import load_dotenv
+
+load_dotenv()
+print(f"Gemini key loaded: {bool(os.getenv('GEMINI_API_KEY'))}")
 
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -27,8 +33,41 @@ from agent import (
     save_task,
     load_preferences,
     TASKS_DIR,
+    plan_goal,
+    _enrich_steps_with_risk,
+    record_event,
 )
 from tools import tool_registry, set_fail_once, get_fail_once, SANDBOX_DIR
+
+_running_tasks = set()
+_running_tasks_lock = threading.Lock()
+
+def _run_task_in_background(task_id: str, resume_input=None):
+    with _running_tasks_lock:
+        if task_id in _running_tasks:
+            return False
+        _running_tasks.add(task_id)
+    def worker():
+        try:
+            task = load_task(task_id)
+            if task:
+                if task.get("planner") is None:
+                    planner_info = {}
+                    task["steps"] = plan_goal(task["goal"], planner_info)
+                    _enrich_steps_with_risk(task["steps"])
+                    task["planner"] = planner_info.get("planner", "heuristic")
+                    task["planner_error"] = planner_info.get("planner_error")
+                    task["message"] = f"Task created with {len(task['steps'])} planned step(s)."
+                    record_event(task, "plan", f"Plan created with {len(task['steps'])} step(s) using the {task['planner']} planner.")
+                    save_task(task)
+                run_task(task, resume_input=resume_input)
+        except Exception as exc:
+            print(f"Background task {task_id} failed: {exc}")
+        finally:
+            with _running_tasks_lock:
+                _running_tasks.discard(task_id)
+    threading.Thread(target=worker, name=f"jarvis-{task_id}", daemon=True).start()
+    return True
 
 app = FastAPI(
     title="JARVIS Agent Backend",
@@ -59,8 +98,10 @@ class CreateTaskRequest(BaseModel):
 
 
 class ResumeTaskRequest(BaseModel):
+    confirm: Optional[bool] = Field(None, description="Confirm or reject a paused action")
     confirmed: Optional[bool] = Field(None, description="Confirm medium risk action")
     approved: Optional[bool] = Field(None, description="Approve high risk action")
+    selected_file: Optional[str] = Field(None, description="File selected from search suggestions")
     selected_option: Optional[str] = Field(None, description="Option selected for disambiguation")
     input: Optional[str] = Field(None, description="Generic input or option")
     args: Optional[Dict[str, Any]] = Field(None, description="Optional updated args for retry")
@@ -99,16 +140,15 @@ def create_new_task(payload: CreateTaskRequest):
     if not payload.goal.strip():
         raise HTTPException(status_code=400, detail="Goal cannot be empty.")
 
-    task = create_task(goal=payload.goal.strip(), custom_steps=payload.custom_steps)
-    executed_task = run_task(task)
-
+    task = create_task(goal=payload.goal.strip(), custom_steps=payload.custom_steps, defer_planning=not payload.custom_steps)
+    _run_task_in_background(task["task_id"])
     return {
-        "task_id": executed_task["task_id"],
-        "status": executed_task["status"],
-        "current_step": executed_task["current_step"],
-        "total_steps": len(executed_task["steps"]),
-        "message": executed_task.get("message"),
-        "state": executed_task,
+        "task_id": task["task_id"],
+        "status": task["status"],
+        "current_step": task["current_step"],
+        "total_steps": len(task["steps"]),
+        "message": task.get("message"),
+        "state": task,
     }
 
 
@@ -149,7 +189,8 @@ def resume_task_endpoint(task_id: str, payload: Optional[ResumeTaskRequest] = No
         }
 
     resume_data = payload.model_dump(exclude_unset=True) if payload else {}
-    updated_task = run_task(task, resume_input=resume_data)
+    _run_task_in_background(task_id, resume_input=resume_data)
+    updated_task = task
 
     return {
         "task_id": updated_task["task_id"],
@@ -188,28 +229,28 @@ def reset_sandbox():
     # 1. Reset FAIL_ONCE
     set_fail_once(True)
 
-    # 2. Reset sandbox contents
-    if SANDBOX_DIR.exists():
-        shutil.rmtree(SANDBOX_DIR)
+    # 2. Ensure demo files exist without removing user files.
     SANDBOX_DIR.mkdir(parents=True, exist_ok=True)
 
-    # 3. Seed files
-    (SANDBOX_DIR / "financial_report_q1.pdf").write_text(
-        "Q1 Financial Summary\nRevenue: $1.2M\nExpenses: $850k\nNet: $350k\nStatus: Approved\n",
-        encoding="utf-8"
-    )
-    (SANDBOX_DIR / "financial_report_q2.pdf").write_text(
-        "Q2 Financial Summary\nRevenue: $1.5M\nExpenses: $920k\nNet: $580k\nStatus: Draft\n",
-        encoding="utf-8"
-    )
-    (SANDBOX_DIR / "meeting_notes.txt").write_text(
-        "Team sync notes:\n- Reviewed project roadmap\n- Scheduled deployment window for Friday 18:00\n",
-        encoding="utf-8"
-    )
+    def ensure_seed(relative_path: str, content: str) -> None:
+        target = SANDBOX_DIR / relative_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if not target.exists():
+            target.write_text(content, encoding="utf-8")
+
+    ensure_seed("financial_report_q1.pdf", "Q1 Financial Summary\nRevenue: $1.2M\nExpenses: $850k\nNet: $350k\nStatus: Approved\n")
+    ensure_seed("financial_report_q2.pdf", "Q2 Financial Summary\nRevenue: $1.5M\nExpenses: $920k\nNet: $580k\nStatus: Draft\n")
+    ensure_seed("meeting_notes.txt", "Team sync notes:\n- Reviewed project roadmap\n- Scheduled deployment window for Friday 18:00\n")
+    ensure_seed("Agenda.txt", "JARVIS Demo Agenda\n- Review COSMOS mission files\n- Check database assignment files\n- Summarize next steps\n")
+    ensure_seed("COSMOS/COSMOS_Overview.txt", "COSMOS Mission Overview\nA survey of nearby exoplanets and observation targets.\n")
+    ensure_seed("COSMOS/Exoplanet_Catalog.txt", "Kepler-452b — candidate Earth-like planet\nTRAPPIST-1e — rocky planet in the habitable zone\n")
+    ensure_seed("COSMOS/Mission_Log.txt", "Mission log: telescope calibration complete.\nNext observation window: 2026-10-20.\n")
+    ensure_seed("DBMS_Assignment_1.pdf", "Database Management Systems — Assignment 1\nTopics: relational algebra and normalization.\n")
+    ensure_seed("DBMS_Assignment_1_final.pdf", "Database Management Systems — Assignment 1 Final\nSubmission copy.\n")
 
     return {
         "status": "success",
-        "message": "Sandbox reset with 3 seed files. FAIL_ONCE set to True.",
-        "files": [f.name for f in SANDBOX_DIR.iterdir()],
+        "message": "Sandbox sample files verified. Existing files were preserved. FAIL_ONCE set to True.",
+        "files": [f.relative_to(SANDBOX_DIR).as_posix() for f in SANDBOX_DIR.rglob("*") if f.is_file()],
         "fail_once": get_fail_once()
     }
