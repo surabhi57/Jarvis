@@ -127,6 +127,8 @@ set GEMINI_API_KEY=AIzaSy...
 
 > **Note:** If no API key is set, JARVIS will automatically use its built-in rule-based heuristic planner. It works immediately out of the box with zero setup!
 
+Set `GEMINI_MODEL` in the project-root `.env` to choose a Gemini model; it defaults to `gemini-2.5-flash`. Keep `.env` private and untracked.
+
 ### 3. Run the Backend
 
 Run with `uvicorn`:

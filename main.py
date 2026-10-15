@@ -18,8 +18,51 @@ import threading
 
 from dotenv import load_dotenv
 
-load_dotenv()
-print(f"Gemini key loaded: {bool(os.getenv('GEMINI_API_KEY'))}")
+load_dotenv(Path(__file__).resolve().parent / ".env", override=True)
+
+
+def _clean_api_key(value: Optional[str]) -> str:
+    value = (value or "").strip().lstrip("\ufeff").rstrip("\r\n").strip()
+    while value and value[0] in "\ufeff\"'":
+        value = value[1:].lstrip()
+    while value and value[-1] in "\ufeff\"'\r\n":
+        value = value[:-1].rstrip()
+    return value.strip()
+
+
+GEMINI_API_KEY = _clean_api_key(os.getenv("GEMINI_API_KEY"))
+OPENAI_API_KEY = _clean_api_key(os.getenv("OPENAI_API_KEY"))
+os.environ["GEMINI_API_KEY"] = GEMINI_API_KEY
+os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+print(f"Gemini key loaded: {bool(GEMINI_API_KEY)}, length={len(GEMINI_API_KEY)}, starts with {GEMINI_API_KEY[:4] if GEMINI_API_KEY else 'none'}")
+GEMINI_STARTUP_CLIENT = None
+
+
+def _safe_startup_error(error: Exception) -> str:
+    message = str(error).replace("\r", " ").replace("\n", " ")
+    for secret in (GEMINI_API_KEY, OPENAI_API_KEY):
+        if secret:
+            message = message.replace(secret, "[redacted]")
+    return message[:240] or error.__class__.__name__
+
+
+if GEMINI_API_KEY:
+    try:
+        from google import genai
+        GEMINI_STARTUP_CLIENT = genai.Client(api_key=GEMINI_API_KEY)
+        GEMINI_STARTUP_CLIENT.models.generate_content(
+            model=GEMINI_MODEL,
+            contents="Reply with OK",
+        )
+        GEMINI_HEALTH = "ok"
+        print("Gemini test: OK")
+    except Exception as exc:
+        GEMINI_HEALTH = _safe_startup_error(exc)
+        print(f"Gemini test: {GEMINI_HEALTH}")
+else:
+    GEMINI_HEALTH = "GEMINI_API_KEY is not configured"
+    print(f"Gemini test: {GEMINI_HEALTH}")
 
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -37,6 +80,7 @@ from agent import (
     _enrich_steps_with_risk,
     _applied_preferences,
     record_event,
+    _safe_error_message,
 )
 from tools import tool_registry, set_fail_once, get_fail_once, SANDBOX_DIR
 
@@ -64,7 +108,7 @@ def _run_task_in_background(task_id: str, resume_input=None):
                     save_task(task)
                 run_task(task, resume_input=resume_input)
         except Exception as exc:
-            print(f"Background task {task_id} failed: {exc}")
+            print(f"Background task {task_id} failed: {_safe_error_message(exc)}")
         finally:
             with _running_tasks_lock:
                 _running_tasks.discard(task_id)
@@ -85,6 +129,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.get("/health")
+def health():
+    return {"gemini": GEMINI_HEALTH}
 
 
 # ==========================================

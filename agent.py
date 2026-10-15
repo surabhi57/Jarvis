@@ -21,7 +21,30 @@ import uuid
 
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parent / ".env", override=True)
+
+
+def clean_api_key(value: Optional[str]) -> str:
+    value = (value or "").strip().lstrip("\ufeff").rstrip("\r\n").strip()
+    while value and value[0] in "\ufeff\"'":
+        value = value[1:].lstrip()
+    while value and value[-1] in "\ufeff\"'\r\n":
+        value = value[:-1].rstrip()
+    return value.strip()
+
+
+GEMINI_API_KEY = clean_api_key(os.getenv("GEMINI_API_KEY"))
+OPENAI_API_KEY = clean_api_key(os.getenv("OPENAI_API_KEY"))
+os.environ["GEMINI_API_KEY"] = GEMINI_API_KEY
+os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
+
+
+def _safe_error_message(error: Any) -> str:
+    message = str(error)
+    for secret in (GEMINI_API_KEY, OPENAI_API_KEY):
+        if secret:
+            message = message.replace(secret, "[redacted]")
+    return message
 
 from tools import SANDBOX_DIR, tool_registry
 from verifiers import get_verifier
@@ -386,8 +409,8 @@ def plan_goal(goal: str, planner_info: Optional[Dict[str, str]] = None) -> List[
         signature = ", ".join("{}: {}".format(key, schema.get("type", "any")) for key, schema in tool["parameters"].items())
         tool_lines.append("- {}({}) [risk: {}]: {}".format(tool["name"], signature, tool["risk_level"], tool["description"]))
     tools_prompt = "\n".join(tool_lines)
-    openai_key = os.getenv("OPENAI_API_KEY")
-    gemini_key = os.getenv("GEMINI_API_KEY")
+    openai_key = OPENAI_API_KEY
+    gemini_key = GEMINI_API_KEY
 
     # Try OpenAI if configured
     if openai_key:
@@ -412,36 +435,41 @@ def plan_goal(goal: str, planner_info: Optional[Dict[str, str]] = None) -> List[
                 planner_info["planner"] = "openai"
             return parsed
         except Exception as exc:
-            print(f"OpenAI planner failed: {exc}")
+            print(f"OpenAI planner failed: {_safe_error_message(exc)}")
             if planner_info is not None:
-                planner_info["planner_error"] = f"OpenAI planner failed: {exc}"
+                planner_info["planner_error"] = f"OpenAI planner failed: {_safe_error_message(exc)}"
 
     # Try Gemini if configured
     if gemini_key:
-        try:
-            from google import genai
-            client = genai.Client(api_key=gemini_key)
-            prompt = (
-                PLANNER_SYSTEM_PROMPT.replace("{preferences}", json.dumps(preferences, indent=2)).replace("{tools}", tools_prompt)
-                + f"\n\nUser Goal: {goal}\nReturn JSON array only:"
-            )
-            response = client.models.generate_content(
-                model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
-                contents=prompt
-            )
-            raw_text = response.text.strip()
-            raw_text = re.sub(r"^```(?:json)?", "", raw_text).strip("`").strip()
-            parsed = _validate_planner_steps(json.loads(raw_text))
-            _enrich_steps_with_risk(parsed)
-            if planner_info is not None:
-                planner_info["planner"] = "gemini"
-            return parsed
-        except Exception as exc:
-            print(f"Gemini planner failed: {exc}")
-            if planner_info is not None:
-                previous = planner_info.get("planner_error")
-                current = f"Gemini planner failed: {exc}"
-                planner_info["planner_error"] = f"{previous}; {current}" if previous else current
+        last_error = None
+        for attempt in range(2):
+            try:
+                from google import genai
+                client = genai.Client(api_key=gemini_key)
+                prompt = (
+                    PLANNER_SYSTEM_PROMPT.replace("{preferences}", json.dumps(preferences, indent=2)).replace("{tools}", tools_prompt)
+                    + f"\n\nUser Goal: {goal}\nReturn JSON array only:"
+                )
+                response = client.models.generate_content(
+                    model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
+                    contents=prompt
+                )
+                raw_text = response.text.strip()
+                raw_text = re.sub(r"^```(?:json)?", "", raw_text).strip("`").strip()
+                parsed = _validate_planner_steps(json.loads(raw_text))
+                _enrich_steps_with_risk(parsed)
+                if planner_info is not None:
+                    planner_info["planner"] = "gemini"
+                return parsed
+            except Exception as exc:
+                last_error = exc
+                if attempt == 0:
+                    print(f"Gemini planner attempt 1 failed; retrying once: {_safe_error_message(exc)}")
+        if planner_info is not None:
+            previous = planner_info.get("planner_error")
+            current = f"Gemini planner failed after retry: {_safe_error_message(last_error)}"
+            planner_info["planner_error"] = f"{previous}; {current}" if previous else current
+        print(planner_info.get("planner_error") if planner_info else f"Gemini planner failed after retry: {_safe_error_message(last_error)}")
 
     # Fallback heuristic planner
     steps = _heuristic_planner(goal, preferences)
@@ -581,7 +609,7 @@ def _llm_missing_tools(task: Dict[str, Any]) -> Optional[List[str]]:
             allowed = {tool["name"] for tool in tool_registry.list_tools()}
             return [name for name in missing if name in allowed]
     except Exception as exc:
-        print(f"Goal coverage LLM failed: {exc}")
+        print(f"Goal coverage LLM failed: {_safe_error_message(exc)}")
     return None
 
 def _goal_gaps(task: Dict[str, Any]) -> List[Dict[str, Any]]:
