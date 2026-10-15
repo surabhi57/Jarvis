@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#080d14" />
+    <title>JARVIS — Agent Console</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <a class="brand" href="./" aria-label="JARVIS home">
+          <span class="brand-mark" aria-hidden="true">J</span>
+          <span>JARVIS<span class="brand-sub">AGENT CONSOLE</span></span>
+        </a>
+        <div class="connection"><span class="pulse" aria-hidden="true"></span><span id="connection-label">Connecting</span></div>
+      </header>
+
+      <section class="hero" aria-labelledby="page-title">
+        <p class="eyebrow">PLAN <span>→</span> EXECUTE <span>→</span> VERIFY <span>→</span> RECOVER</p>
+        <h1 id="page-title">What should I take care of?</h1>
+        <p class="intro">Give JARVIS a goal. You’ll see every step and can weigh in when it needs you.</p>
+      </section>
+
+      <form id="goal-form" class="composer">
+        <label class="sr-only" for="goal-input">Your goal</label>
+        <textarea id="goal-input" rows="2" placeholder="For example: Find the Q1 report and move it to archive" required></textarea>
+        <div class="composer-footer">
+          <span class="hint">JARVIS will ask before sensitive actions.</span>
+          <button id="start-button" class="primary" type="submit"><span>Start task</span><span aria-hidden="true">↗</span></button>
+        </div>
+      </form>
+
+      <section id="task-panel" class="task-panel" hidden aria-live="polite">
+        <div class="task-heading">
+          <div><p class="eyebrow">CURRENT TASK</p><h2 id="task-goal"></h2></div>
+          <span id="task-status" class="badge"></span>
+        </div>
+        <p id="remembered" class="remembered" hidden></p>
+        <p id="task-message" class="task-message" hidden></p>
+        <div id="steps" class="steps"></div>
+        <div id="human-panel" class="human-panel" hidden></div>
+      </section>
+      <div id="notice" class="notice" role="status" hidden></div>
+      <footer>JARVIS · Failure-aware by design</footer>
+    </main>
+    <script src="app.js" defer></script>
+  </body>
+</html>

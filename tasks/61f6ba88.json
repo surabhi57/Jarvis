@@ -1,0 +1,36 @@
+{
+  "task_id": "61f6ba88",
+  "goal": "move missing file",
+  "status": "needs_human",
+  "current_step": 0,
+  "steps": [
+    {
+      "tool": "move_file",
+      "args": {
+        "name": "ghost_file.txt",
+        "folder": "archive"
+      },
+      "risk": "low",
+      "step_id": 1,
+      "status": "needs_human",
+      "attempts": 3,
+      "result": null,
+      "error": "Source file 'ghost_file.txt' does not exist in sandbox.",
+      "confirmed": false,
+      "approved": false
+    }
+  ],
+  "error_details": {
+    "type": "verification_failed",
+    "what_failed": "Step 1 (move_file) failed verification after 3 attempt(s).",
+    "what_was_tried": [
+      "Attempt 1: tool execution threw exception: Source file 'ghost_file.txt' does not exist in sandbox.",
+      "Attempt 2: tool execution threw exception: Source file 'ghost_file.txt' does not exist in sandbox.",
+      "Attempt 3: tool execution threw exception: Source file 'ghost_file.txt' does not exist in sandbox."
+    ],
+    "what_needed": "Manual intervention required for tool 'move_file' with args {'name': 'ghost_file.txt', 'folder': 'archive'}."
+  },
+  "message": "Step 1 failed after retries. Escalating to human.",
+  "created_at": "2026-10-15T09:00:46.517457+00:00",
+  "updated_at": "2026-10-15T09:00:46.526070+00:00"
+}

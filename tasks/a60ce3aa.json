@@ -1,0 +1,27 @@
+{
+  "task_id": "a60ce3aa",
+  "goal": "move missing file",
+  "status": "needs_confirmation",
+  "current_step": 0,
+  "steps": [
+    {
+      "tool": "move_file",
+      "args": {
+        "name": "ghost_file.txt",
+        "folder": "archive"
+      },
+      "risk": "medium",
+      "step_id": 1,
+      "status": "needs_confirmation",
+      "attempts": 0,
+      "result": null,
+      "error": null,
+      "confirmed": false,
+      "approved": false
+    }
+  ],
+  "error_details": null,
+  "message": "Step 1 (move_file) has medium risk and requires user confirmation.",
+  "created_at": "2026-10-15T08:52:37.040143+00:00",
+  "updated_at": "2026-10-15T08:52:37.042635+00:00"
+}

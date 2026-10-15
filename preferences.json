@@ -1,0 +1,7 @@
+{
+  "user_name": "Admin",
+  "default_recipient": "team@example.com",
+  "default_archive_folder": "archive",
+  "reminder_default_time": "09:00 AM",
+  "preferred_file_format": "pdf"
+}
