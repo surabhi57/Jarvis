@@ -1,7 +1,7 @@
 :root {
   color-scheme: light;
-  --page-bg: #B4B0BA;
-  --card: #ECE9F2;
+  --page-bg: #FFFFFF;
+  --card: #FFFFFF;
   --text: #1B1F21;
   --purple: #6B3F8F;
   --pink: #BE5A8E;
@@ -50,14 +50,10 @@ button:disabled { opacity: .6; cursor: wait; }
   letter-spacing: .12em;
 }
 .brand-mark {
-  display: grid;
+  display: block;
   width: 40px;
   height: 40px;
-  place-items: center;
-  border: 1px solid var(--purple);
-  border-radius: 13px;
-  color: var(--purple);
-  background: var(--card);
+  object-fit: contain;
 }
 .connection {
   display: inline-flex;
